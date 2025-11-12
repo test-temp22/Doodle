@@ -45,8 +45,9 @@
       background: #ffcf33;
     }
 
-    input[type="color"] {
+    input[type="color"], input[type="range"] {
       margin-left: 10px;
+      vertical-align: middle;
     }
   </style>
 </head>
@@ -56,54 +57,79 @@
   <div class="controls">
     <button id="clearBtn">Clear</button>
     <label>Color: <input type="color" id="colorPicker" value="#000000"></label>
+    <label>Size: <input type="range" id="brushSize" min="1" max="30" value="6"></label>
   </div>
 
   <canvas id="board" width="600" height="400"></canvas>
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
-    // 👇 Connect to the same host serving this page
+    // Connect to the same server serving this page
     const socket = io();
 
     const canvas = document.getElementById("board");
     const ctx = canvas.getContext("2d");
     const colorPicker = document.getElementById("colorPicker");
     const clearBtn = document.getElementById("clearBtn");
+    const brushSize = document.getElementById("brushSize");
 
     let drawing = false;
     let color = colorPicker.value;
+    let size = parseInt(brushSize.value);
+    let lastX = 0, lastY = 0;
 
     colorPicker.addEventListener("change", () => color = colorPicker.value);
+    brushSize.addEventListener("input", () => size = parseInt(brushSize.value));
 
-    // Start drawing
+    // Set smoother brush style
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+
+    // Mouse events
     canvas.addEventListener("mousedown", (e) => {
       drawing = true;
-      draw(e);
+      [lastX, lastY] = [e.offsetX, e.offsetY];
     });
 
-    canvas.addEventListener("mouseup", () => (drawing = false));
-    canvas.addEventListener("mouseleave", () => (drawing = false));
-
+    canvas.addEventListener("mouseup", () => drawing = false);
+    canvas.addEventListener("mouseleave", () => drawing = false);
     canvas.addEventListener("mousemove", draw);
 
+    // Draw and emit data
+    function draw(e) {
+      if (!drawing) return;
+
+      const x = e.offsetX;
+      const y = e.offsetY;
+
+      ctx.strokeStyle = color + "88"; // adds slight transparency for “crayon” feel
+      ctx.lineWidth = size;
+
+      ctx.beginPath();
+      ctx.moveTo(lastX, lastY);
+      ctx.lineTo(x, y);
+      ctx.stroke();
+
+      socket.emit("draw", { x1: lastX, y1: lastY, x2: x, y2: y, color, size });
+
+      [lastX, lastY] = [x, y];
+    }
+
+    // Listen for remote drawing
+    socket.on("draw", ({ x1, y1, x2, y2, color, size }) => {
+      ctx.strokeStyle = color + "88";
+      ctx.lineWidth = size;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+    });
+
+    // Clear canvas
     clearBtn.onclick = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       socket.emit("clear");
     };
-
-    function draw(e) {
-      if (!drawing) return;
-      const x = e.offsetX;
-      const y = e.offsetY;
-      ctx.fillStyle = color;
-      ctx.fillRect(x, y, 3, 3);
-      socket.emit("draw", { x, y, color });
-    }
-
-    socket.on("draw", ({ x, y, color }) => {
-      ctx.fillStyle = color;
-      ctx.fillRect(x, y, 3, 3);
-    });
 
     socket.on("clear", () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);

@@ -18,6 +18,7 @@ const ctx = canvas.getContext('2d');
 const gridW = canvas.width;
 const gridH = canvas.height;
 
+// Helper: create a circular polygon for initial territory
 function createCirclePolygon(x, y, r, points=16){
     const poly = [];
     for(let i=0;i<points;i++){
@@ -27,7 +28,7 @@ function createCirclePolygon(x, y, r, points=16){
     return poly;
 }
 
-// draw a star at (x,y) with radius r
+// Draw a star at (x,y) with radius r
 function drawStar(ctx, x, y, r, color){
     ctx.fillStyle = color;
     ctx.beginPath();
@@ -54,7 +55,7 @@ class Player {
         this.keys = keys;
         this.dir = {x:0,y:0};
         this.speed = 3;
-        this.territory = createCirclePolygon(x, y, 20); // small initial circular area
+        this.territory = createCirclePolygon(x, y, 20); // small initial circle
         this.trail = [];
         this.alive = true;
     }
@@ -65,6 +66,7 @@ class Player {
         this.y += this.dir.y * this.speed;
         this.x = Math.max(0, Math.min(gridW, this.x));
         this.y = Math.max(0, Math.min(gridH, this.y));
+        // leave trail if outside territory
         if(!this.insideTerritory()) {
             this.trail.push({x:this.x,y:this.y});
         } else if(this.trail.length > 0) {
@@ -137,16 +139,17 @@ function handleInput(){
     }
 }
 
-// collision with other trails
+// collision with other players' trails only
 function checkCollisions(){
-    const allTrails = players.map(p => p.trail).flat();
     for(let p of players){
         if(!p.alive) continue;
-        for(let t of allTrails){
-            if(p.trail.includes(t)) continue; // skip self
-            if(Math.hypot(p.x-t.x,p.y-t.y)<6){
-                p.alive=false;
-                alert(p.color + " lost!");
+        for(let other of players){
+            if(other === p) continue; // skip self
+            for(let t of other.trail){
+                if(Math.hypot(p.x - t.x, p.y - t.y) < 6){
+                    p.alive = false;
+                    alert(p.color + " lost!");
+                }
             }
         }
     }

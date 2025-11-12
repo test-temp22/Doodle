@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>Shared Doodle Note</title>
+  <style>
+    body {
+      margin: 0;
+      background: #fffca8;
+      font-family: "Comic Sans MS", cursive;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    h1 {
+      margin-top: 10px;
+      color: #333;
+      font-size: 1.5em;
+    }
+
+    canvas {
+      border: 2px solid #555;
+      border-radius: 8px;
+      background: #fffef0;
+      box-shadow: 3px 3px 6px rgba(0, 0, 0, 0.2);
+      cursor: crosshair;
+    }
+
+    .controls {
+      margin: 10px;
+    }
+
+    button {
+      margin: 0 5px;
+      padding: 6px 10px;
+      background: #ffd966;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    button:hover {
+      background: #ffcf33;
+    }
+
+    input[type="color"] {
+      margin-left: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🖍️ Shared Doodle Note</h1>
+
+  <div class="controls">
+    <button id="clearBtn">Clear</button>
+    <label>Color: <input type="color" id="colorPicker" value="#000000"></label>
+  </div>
+
+  <canvas id="board" width="600" height="400"></canvas>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    // 👇 Connect to the same host serving this page
+    const socket = io();
+
+    const canvas = document.getElementById("board");
+    const ctx = canvas.getContext("2d");
+    const colorPicker = document.getElementById("colorPicker");
+    const clearBtn = document.getElementById("clearBtn");
+
+    let drawing = false;
+    let color = colorPicker.value;
+
+    colorPicker.addEventListener("change", () => color = colorPicker.value);
+
+    // Start drawing
+    canvas.addEventListener("mousedown", (e) => {
+      drawing = true;
+      draw(e);
+    });
+
+    canvas.addEventListener("mouseup", () => (drawing = false));
+    canvas.addEventListener("mouseleave", () => (drawing = false));
+
+    canvas.addEventListener("mousemove", draw);
+
+    clearBtn.onclick = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      socket.emit("clear");
+    };
+
+    function draw(e) {
+      if (!drawing) return;
+      const x = e.offsetX;
+      const y = e.offsetY;
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, 3, 3);
+      socket.emit("draw", { x, y, color });
+    }
+
+    socket.on("draw", ({ x, y, color }) => {
+      ctx.fillStyle = color;
+      ctx.fillRect(x, y, 3, 3);
+    });
+
+    socket.on("clear", () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    });
+  </script>
+</body>
+</html>

@@ -1,139 +1,147 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Shared Doodle Note</title>
-  <style>
-    body {
-      margin: 0;
-      background: #fffca8;
-      font-family: "Comic Sans MS", cursive;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-
-    h1 {
-      margin-top: 10px;
-      color: #333;
-      font-size: 1.5em;
-    }
-
-    canvas {
-      border: 2px solid #555;
-      border-radius: 8px;
-      background: #fffef0;
-      box-shadow: 3px 3px 6px rgba(0, 0, 0, 0.2);
-      cursor: crosshair;
-    }
-
-    .controls {
-      margin: 10px;
-    }
-
-    button {
-      margin: 0 5px;
-      padding: 6px 10px;
-      background: #ffd966;
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-      font-weight: bold;
-    }
-
-    button:hover {
-      background: #ffcf33;
-    }
-
-    input[type="color"], input[type="range"] {
-      margin-left: 10px;
-      vertical-align: middle;
-    }
-  </style>
+<meta charset="UTF-8">
+<title>Mini Paper.io</title>
+<style>
+  canvas { border: 2px solid #333; background: #eee; display:block; margin: auto; }
+  body { text-align:center; font-family: sans-serif; }
+</style>
 </head>
 <body>
-  <h1>🖍️ Shared Doodle Note</h1>
+<h1>Mini Paper.io</h1>
+<canvas id="game" width="800" height="600"></canvas>
+<script>
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
 
-  <div class="controls">
-    <button id="clearBtn">Clear</button>
-    <label>Color: <input type="color" id="colorPicker" value="#000000"></label>
-    <label>Size: <input type="range" id="brushSize" min="1" max="30" value="6"></label>
-  </div>
+const gridW = canvas.width;
+const gridH = canvas.height;
 
-  <canvas id="board" width="600" height="400"></canvas>
-
-  <script src="/socket.io/socket.io.js"></script>
-  <script>
-    // Connect to the same server serving this page
-    const socket = io();
-
-    const canvas = document.getElementById("board");
-    const ctx = canvas.getContext("2d");
-    const colorPicker = document.getElementById("colorPicker");
-    const clearBtn = document.getElementById("clearBtn");
-    const brushSize = document.getElementById("brushSize");
-
-    let drawing = false;
-    let color = colorPicker.value;
-    let size = parseInt(brushSize.value);
-    let lastX = 0, lastY = 0;
-
-    colorPicker.addEventListener("change", () => color = colorPicker.value);
-    brushSize.addEventListener("input", () => size = parseInt(brushSize.value));
-
-    // Set smoother brush style
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-
-    // Mouse events
-    canvas.addEventListener("mousedown", (e) => {
-      drawing = true;
-      [lastX, lastY] = [e.offsetX, e.offsetY];
-    });
-
-    canvas.addEventListener("mouseup", () => drawing = false);
-    canvas.addEventListener("mouseleave", () => drawing = false);
-    canvas.addEventListener("mousemove", draw);
-
-    // Draw and emit data
-    function draw(e) {
-      if (!drawing) return;
-
-      const x = e.offsetX;
-      const y = e.offsetY;
-
-      ctx.strokeStyle = color + "88"; // adds slight transparency for “crayon” feel
-      ctx.lineWidth = size;
-
-      ctx.beginPath();
-      ctx.moveTo(lastX, lastY);
-      ctx.lineTo(x, y);
-      ctx.stroke();
-
-      socket.emit("draw", { x1: lastX, y1: lastY, x2: x, y2: y, color, size });
-
-      [lastX, lastY] = [x, y];
+class Player {
+    constructor(x, y, color, keys) {
+        this.x = x;
+        this.y = y;
+        this.color = color;
+        this.keys = keys;
+        this.dir = {x:0,y:0};
+        this.speed = 3;
+        this.territory = [{x:x,y:y}];
+        this.trail = [];
+        this.alive = true;
     }
+    
+    move() {
+        if(!this.alive) return;
+        this.x += this.dir.x * this.speed;
+        this.y += this.dir.y * this.speed;
+        // keep inside canvas
+        this.x = Math.max(0, Math.min(gridW, this.x));
+        this.y = Math.max(0, Math.min(gridH, this.y));
+        // if outside territory, leave trail
+        if(!this.insideTerritory()) {
+            this.trail.push({x:this.x,y:this.y});
+        } else if(this.trail.length > 0) {
+            // closed trail -> add to territory
+            this.territory.push(...this.trail);
+            this.trail = [];
+        }
+    }
+    
+    insideTerritory() {
+        // simple check: point in polygon
+        let x = this.x, y = this.y;
+        let inside = false;
+        const poly = this.territory;
+        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+            const xi = poly[i].x, yi = poly[i].y;
+            const xj = poly[j].x, yj = poly[j].y;
+            const intersect = ((yi>y)!=(yj>y)) && (x < (xj-xi)*(y-yi)/(yj-yi)+xi);
+            if(intersect) inside = !inside;
+        }
+        return inside;
+    }
+    
+    draw() {
+        // territory
+        ctx.fillStyle = this.color + "66";
+        if(this.territory.length>0){
+            ctx.beginPath();
+            ctx.moveTo(this.territory[0].x,this.territory[0].y);
+            for(let p of this.territory) ctx.lineTo(p.x,p.y);
+            ctx.closePath();
+            ctx.fill();
+        }
+        // trail
+        if(this.trail.length>0){
+            ctx.strokeStyle = this.color;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(this.trail[0].x,this.trail[0].y);
+            for(let p of this.trail) ctx.lineTo(p.x,p.y);
+            ctx.stroke();
+        }
+        // player circle
+        ctx.fillStyle = this.color;
+        ctx.beginPath();
+        ctx.arc(this.x,this.y,10,0,2*Math.PI);
+        ctx.fill();
+    }
+}
 
-    // Listen for remote drawing
-    socket.on("draw", ({ x1, y1, x2, y2, color, size }) => {
-      ctx.strokeStyle = color + "88";
-      ctx.lineWidth = size;
-      ctx.beginPath();
-      ctx.moveTo(x1, y1);
-      ctx.lineTo(x2, y2);
-      ctx.stroke();
-    });
+const player1 = new Player(200,300,'blue',{up:38,down:40,left:37,right:39});
+const player2 = new Player(600,300,'red',{up:87,down:83,left:65,right:68});
 
-    // Clear canvas
-    clearBtn.onclick = () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      socket.emit("clear");
-    };
+const players = [player1, player2];
 
-    socket.on("clear", () => {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-    });
-  </script>
+const keysDown = {};
+document.addEventListener('keydown', e => keysDown[e.keyCode]=true);
+document.addEventListener('keyup', e => keysDown[e.keyCode]=false);
+
+function handleInput(){
+    for(let p of players){
+        if(!p.alive) continue;
+        let dx=0,dy=0;
+        if(keysDown[p.keys.up]) dy=-1;
+        if(keysDown[p.keys.down]) dy=1;
+        if(keysDown[p.keys.left]) dx=-1;
+        if(keysDown[p.keys.right]) dx=1;
+        if(dx!==0 || dy!==0){
+            const mag = Math.sqrt(dx*dx+dy*dy);
+            p.dir.x = dx/mag;
+            p.dir.y = dy/mag;
+        } else {
+            p.dir.x = 0; p.dir.y = 0;
+        }
+    }
+}
+
+// collision with other player trails
+function checkCollisions(){
+    const allTrails = players.map(p => p.trail).flat();
+    for(let p of players){
+        for(let t of allTrails){
+            if(t===p.trail) continue; // skip self
+            if(Math.hypot(p.x-t.x,p.y-t.y)<6){
+                p.alive=false;
+                alert(p.color + " lost!");
+            }
+        }
+    }
+}
+
+function gameLoop(){
+    ctx.clearRect(0,0,gridW,gridH);
+    handleInput();
+    for(let p of players){
+        p.move();
+        p.draw();
+    }
+    checkCollisions();
+    requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
+</script>
 </body>
 </html>

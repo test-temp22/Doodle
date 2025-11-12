@@ -2,7 +2,7 @@
 <html>
 <head>
 <meta charset="UTF-8">
-<title>Mini Paper.io</title>
+<title>Mini Paper.io with Star Players</title>
 <style>
   canvas { border: 2px solid #333; background: #eee; display:block; margin: auto; }
   body { text-align:center; font-family: sans-serif; }
@@ -18,6 +18,34 @@ const ctx = canvas.getContext('2d');
 const gridW = canvas.width;
 const gridH = canvas.height;
 
+function createCirclePolygon(x, y, r, points=16){
+    const poly = [];
+    for(let i=0;i<points;i++){
+        const angle = (i/points)*2*Math.PI;
+        poly.push({x: x + r*Math.cos(angle), y: y + r*Math.sin(angle)});
+    }
+    return poly;
+}
+
+// draw a star at (x,y) with radius r
+function drawStar(ctx, x, y, r, color){
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    for(let i=0;i<5;i++){
+        const angle = i * (2*Math.PI)/5 - Math.PI/2;
+        const x1 = x + r * Math.cos(angle);
+        const y1 = y + r * Math.sin(angle);
+        const angle2 = angle + Math.PI/5;
+        const x2 = x + r/2 * Math.cos(angle2);
+        const y2 = y + r/2 * Math.sin(angle2);
+        if(i===0) ctx.moveTo(x1,y1);
+        else ctx.lineTo(x1,y1);
+        ctx.lineTo(x2,y2);
+    }
+    ctx.closePath();
+    ctx.fill();
+}
+
 class Player {
     constructor(x, y, color, keys) {
         this.x = x;
@@ -26,7 +54,7 @@ class Player {
         this.keys = keys;
         this.dir = {x:0,y:0};
         this.speed = 3;
-        this.territory = [{x:x,y:y}];
+        this.territory = createCirclePolygon(x, y, 20); // small initial circular area
         this.trail = [];
         this.alive = true;
     }
@@ -35,10 +63,8 @@ class Player {
         if(!this.alive) return;
         this.x += this.dir.x * this.speed;
         this.y += this.dir.y * this.speed;
-        // keep inside canvas
         this.x = Math.max(0, Math.min(gridW, this.x));
         this.y = Math.max(0, Math.min(gridH, this.y));
-        // if outside territory, leave trail
         if(!this.insideTerritory()) {
             this.trail.push({x:this.x,y:this.y});
         } else if(this.trail.length > 0) {
@@ -49,7 +75,6 @@ class Player {
     }
     
     insideTerritory() {
-        // simple check: point in polygon
         let x = this.x, y = this.y;
         let inside = false;
         const poly = this.territory;
@@ -63,7 +88,7 @@ class Player {
     }
     
     draw() {
-        // territory
+        // draw territory
         ctx.fillStyle = this.color + "66";
         if(this.territory.length>0){
             ctx.beginPath();
@@ -72,7 +97,7 @@ class Player {
             ctx.closePath();
             ctx.fill();
         }
-        // trail
+        // draw trail
         if(this.trail.length>0){
             ctx.strokeStyle = this.color;
             ctx.lineWidth = 3;
@@ -81,11 +106,8 @@ class Player {
             for(let p of this.trail) ctx.lineTo(p.x,p.y);
             ctx.stroke();
         }
-        // player circle
-        ctx.fillStyle = this.color;
-        ctx.beginPath();
-        ctx.arc(this.x,this.y,10,0,2*Math.PI);
-        ctx.fill();
+        // draw star player
+        drawStar(ctx, this.x, this.y, 10, this.color);
     }
 }
 
@@ -93,7 +115,6 @@ const player1 = new Player(200,300,'blue',{up:38,down:40,left:37,right:39});
 const player2 = new Player(600,300,'red',{up:87,down:83,left:65,right:68});
 
 const players = [player1, player2];
-
 const keysDown = {};
 document.addEventListener('keydown', e => keysDown[e.keyCode]=true);
 document.addEventListener('keyup', e => keysDown[e.keyCode]=false);
@@ -116,12 +137,13 @@ function handleInput(){
     }
 }
 
-// collision with other player trails
+// collision with other trails
 function checkCollisions(){
     const allTrails = players.map(p => p.trail).flat();
     for(let p of players){
+        if(!p.alive) continue;
         for(let t of allTrails){
-            if(t===p.trail) continue; // skip self
+            if(p.trail.includes(t)) continue; // skip self
             if(Math.hypot(p.x-t.x,p.y-t.y)<6){
                 p.alive=false;
                 alert(p.color + " lost!");
